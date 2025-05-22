@@ -162,9 +162,6 @@ The project includes comprehensive test suites using Foundry, covering all contr
 **Name:** Therock Ani
 
 **Email:** anitherock44@gmail.com
-
-**License:**
-
-This project is licensed under the MIT License. See the LICENSE file for details.
+ 
  
  
