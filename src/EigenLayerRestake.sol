@@ -87,7 +87,42 @@ contract EigenLayerRestake {
         withdrawalRoot = delegationManager.undelegate(address(this));
     }
 
+    /// @notice Withdraw staked RETH from an operator after undelegation
+    /// @param operator The address of the operator to withdraw from
+    /// @param shares The number of shares to withdraw
+    /// @param startBlockNum The block number to start the withdrawal
+    /// @dev This function allows the owner to withdraw staked RETH from an operator,
+    ///      including the specified number of shares and the block number to begin the withdrawal.
+    function withdraw(address operator, uint256 shares, uint32 startBlockNum)
+        external
+        auth
+    {
+        address[] memory strategies = new address[](1);
+        strategies[0] = address(strategy);
 
+        uint256[] memory _shares = new uint256[](1);
+        _shares[0] = shares;
+
+        IDelegationManager.Withdrawal memory withdrawal = IDelegationManager
+            .Withdrawal({
+            staker: address(this),
+            delegatedTo: operator,
+            withdrawer: address(this),
+            nonce: 0,
+            startBlock: startBlockNum,
+            strategies: strategies,
+            shares: _shares
+        });
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = RETH;
+
+        delegationManager.completeQueuedWithdrawal({
+            withdrawal: withdrawal,
+            tokens: tokens,
+            receiveAsTokens: true
+        });
+    }
 
     /* Notes on claim rewards
         struct EarnerTreeMerkleLeaf {
@@ -147,7 +182,27 @@ contract EigenLayerRestake {
         rewardsCoordinator.processClaim(claim, address(this));
     }
 
-     
+    /// @notice Get the number of shares held in the strategy for the current staker
+    /// @return The number of shares held in the EigenLayer strategy
+    function getShares() external view returns (uint256) {
+        return strategyManager.stakerDepositShares(
+            address(this), address(strategy)
+        );
+    }
+
+    /// @notice Get the withdrawal delay for the current staker
+    /// @return The withdrawal delay in blocks
+    /// @dev This function returns the maximum of the protocol's minimum withdrawal delay and the strategy's delay.
+    function getWithdrawalDelay() external view returns (uint256) {
+        uint256 protocolDelay = delegationManager.minWithdrawalDelayBlocks();
+
+        address[] memory strategies = new address[](1);
+        strategies[0] = address(strategy);
+        uint256 strategyDelay = delegationManager.getWithdrawalDelay(strategies);
+
+        return max(protocolDelay, strategyDelay);
+    }
+
     /// @notice Transfer all of a specific token from the contract to the given address
     /// @param token The address of the token to transfer
     /// @param dst The address to transfer the token to

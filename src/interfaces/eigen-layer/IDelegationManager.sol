@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8;
 
 interface IDelegationManager {
     struct SignatureWithExpiry {
@@ -40,7 +40,6 @@ interface IDelegationManager {
     function completeQueuedWithdrawal(
         Withdrawal calldata withdrawal,
         address[] calldata tokens,
-        uint256 middlewareTimesIndex,
         bool receiveAsTokens
     ) external;
 
@@ -50,7 +49,6 @@ interface IDelegationManager {
         returns (uint256);
 
     function delegatedTo(address staker) external view returns (address);
-    
-     function calculateWithdrawalRoot(Withdrawal calldata withdrawal) external view returns (bytes32);
 
+    function minWithdrawalDelayBlocks() external view returns (uint256);
 }

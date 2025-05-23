@@ -25,111 +25,103 @@ import {max} from "@src/helpers/Util.sol";
 // forge test --fork-url $FORK_URL --match-path test/EigenLayerRestake.t.sol -vvv
 
 contract EigenLayerTest is Test {
-    /// @notice rETH token interface
-    IERC20 internal constant reth = IERC20(RETH);
-    /// @notice EigenLayer StrategyManager interface
-    IStrategyManager internal constant strategyManager = IStrategyManager(EIGEN_LAYER_STRATEGY_MANAGER);
-    /// @notice EigenLayer rETH strategy interface
-    IStrategy internal constant strategy = IStrategy(EIGEN_LAYER_STRATEGY_RETH);
-    /// @notice EigenLayer DelegationManager interface
-    IDelegationManager internal constant delegationManager = IDelegationManager(EIGEN_LAYER_DELEGATION_MANAGER);
+    IERC20 constant reth = IERC20(RETH);
+    IStrategyManager constant strategyManager =
+        IStrategyManager(EIGEN_LAYER_STRATEGY_MANAGER);
+    IStrategy constant strategy = IStrategy(EIGEN_LAYER_STRATEGY_RETH);
+    IDelegationManager constant delegationManager =
+        IDelegationManager(EIGEN_LAYER_DELEGATION_MANAGER);
 
-    /// @notice Amount of rETH used for testing (1 rETH)
-    uint256 internal constant RETH_AMOUNT = 1e18;
+    uint256 constant RETH_AMOUNT = 1e18;
 
-    /// @notice Instance of EigenLayerRestake contract
-    EigenLayerRestake internal restake;
+    EigenLayerRestake restake;
 
-    /// @notice Sets up the test environment
-    /// @dev Funds the test contract with rETH, deploys EigenLayerRestake, and sets approvals
     function setUp() public {
-        // Fund this contract with 1 rETH
         deal(RETH, address(this), RETH_AMOUNT);
-
-        // Approve StrategyManager to spend rETH
         reth.approve(address(strategyManager), type(uint256).max);
 
-        // Deploy EigenLayerRestake contract
         restake = new EigenLayerRestake();
-
-        // Approve EigenLayerRestake to spend rETH
         reth.approve(address(restake), type(uint256).max);
     }
 
-    /// @notice Tests depositing rETH into EigenLayerRestake
-    /// @dev Verifies authorization, share issuance, and token balances
     function test_deposit() public {
-        // Test unauthorized deposit (should revert)
+        // Test auth
         vm.expectRevert();
         vm.prank(address(1));
         restake.deposit(RETH_AMOUNT);
 
-        // Perform authorized deposit
         uint256 shares = restake.deposit(RETH_AMOUNT);
         console.log("shares %e", shares);
 
-        // Verify shares were issued
-        assertGt(shares, 0, "Shares should be greater than 0");
-
-        // Verify token balances
-        assertEq(reth.balanceOf(address(restake)), 0, "Restake contract rETH balance should be 0");
-        assertEq(reth.balanceOf(address(this)), 0, "Test contract rETH balance should be 0");
+        assertGt(shares, 0);
+        assertEq(
+            shares,
+            strategyManager.stakerDepositShares(
+                address(restake), address(strategy)
+            )
+        );
+        assertEq(reth.balanceOf(address(restake)), 0);
+        assertEq(reth.balanceOf(address(this)), 0);
     }
 
-    /// @notice Tests delegating to an operator in EigenLayer
-    /// @dev Verifies authorization and delegation status
     function test_delegate() public {
-        // Deposit rETH first
         restake.deposit(RETH_AMOUNT);
 
-        // Test unauthorized delegation (should revert)
+        // Test auth
         vm.expectRevert();
         vm.prank(address(1));
         restake.delegate(EIGEN_LAYER_OPERATOR);
 
-        // Perform authorized delegation
         restake.delegate(EIGEN_LAYER_OPERATOR);
-
-        // Verify delegation to the operator
         assertEq(
             delegationManager.delegatedTo(address(restake)),
-            EIGEN_LAYER_OPERATOR,
-            "Delegation should be set to operator"
+            EIGEN_LAYER_OPERATOR
         );
     }
 
-    /// @notice Tests undelegating from an operator in EigenLayer
-    /// @dev Verifies authorization and undelegation status
     function test_undelegate() public {
-        // Deposit and delegate first
         restake.deposit(RETH_AMOUNT);
         restake.delegate(EIGEN_LAYER_OPERATOR);
 
-        // Test unauthorized undelegation (should revert)
+        // Test auth
         vm.expectRevert();
         vm.prank(address(1));
         restake.undelegate();
 
-        // Perform authorized undelegation
         restake.undelegate();
-
-        // Verify no operator is delegated
-        assertEq(
-            delegationManager.delegatedTo(address(restake)),
-            address(0),
-            "Delegation should be unset"
-        );
+        assertEq(delegationManager.delegatedTo(address(restake)), address(0));
     }
 
-    /// @notice Tests transferring rETH from EigenLayerRestake
-    /// @dev Verifies authorization for transfer
+    function test_withdraw() public {
+        uint256 shares = restake.deposit(RETH_AMOUNT);
+        restake.delegate(EIGEN_LAYER_OPERATOR);
+
+        uint256 b0 = block.number;
+        restake.undelegate();
+
+        uint256 protocolDelay = delegationManager.minWithdrawalDelayBlocks();
+        console.log("Protocol delay:", protocolDelay);
+
+        vm.roll(b0 + protocolDelay + 1);
+
+        // Test auth
+        vm.expectRevert();
+        vm.prank(address(1));
+        restake.withdraw(EIGEN_LAYER_OPERATOR, shares, uint32(b0));
+
+        restake.withdraw(EIGEN_LAYER_OPERATOR, shares, uint32(b0));
+
+        uint256 rethBal = reth.balanceOf(address(restake));
+        console.log("RETH %e", rethBal);
+        assertGt(rethBal, 0);
+    }
+
     function test_transfer() public {
-        // Test unauthorized transfer (should revert)
+        // Test auth
         vm.expectRevert();
         vm.prank(address(1));
         restake.transfer(RETH, address(1));
 
-        // Perform authorized transfer
         restake.transfer(RETH, address(1));
     }
 }
